@@ -1,7 +1,7 @@
 # COMP30024 Artificial Intelligence, Semester 1 2026
 # Project Part A: Single Player Cascade
 
-from .core import CellState, Coord, Direction, Action, MoveAction, EatAction, CascadeAction
+from .core import CellState, Coord, Direction, Action, MoveAction, EatAction, CascadeAction, PlayerColor
 from .utils import render_board
 
 def is_goal(
@@ -11,10 +11,24 @@ def is_goal(
     Check whether the current board state is a goal state.
     A board is a goal state if there are no BLUE stacks remaining.
     """
-    for cell in board.values:
+    for cell in board.values():
         if cell.color == PlayerColor.BLUE:
             return False
     return True
+
+
+
+def encode_state(
+    board: dict[Coord, CellState]
+) -> tuple:
+    """
+    """
+    items = []
+    for coord, cell in board.items:
+        items.append((coord.r, coord.c, cell.color, cell.height))
+    items.sort()
+    return tuple(items)
+
 
 def search(
     board: dict[Coord, CellState]
