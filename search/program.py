@@ -30,6 +30,12 @@ def encode_state(
     return tuple(items)
 
 
+def get_legal_actions():
+    pass
+
+def apply_action():
+    pass
+
 def search(
     board: dict[Coord, CellState]
 ) -> list[Action] | None:
@@ -48,7 +54,29 @@ def search(
         if no solution is possible.
     """
 
-    actions = []
+    
+    initial_board = board
+    path = []
+    visited = {encode_state(initial_board)}
+    queue = [(initial_board, path)]
+
+    while len(queue) > 0:
+        current_board, path = queue.pop(0)
+
+        if is_goal(current_board):
+            return path
+
+        for action in get_legal_actions(current_board):
+            next_board = apply_action(current_board, action)
+
+            state = encode_state(next_board)
+
+            if state not in visited:
+                visited.add(state)
+                queue.append((next_board, path + [action]))
+            
+
+
 
     # The render_board() function is handy for debugging. It will print out a
     # board state in a human-readable format. If your terminal supports ANSI
@@ -64,4 +92,4 @@ def search(
     # output format. Of course, you should instead return the result of your
     # search algorithm. Remember: if no solution is possible for a given input,
     # return `None` instead of a list.
-    return actions
+    return None
