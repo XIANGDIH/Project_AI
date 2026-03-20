@@ -15,6 +15,7 @@ from .program import search
 SOLUTION_PREFIX = "$SOLUTION"
 
 
+# Only non-empty cell would be recorded in the dictionary
 def parse_input(input: str) -> dict[Coord, CellState]:
     """
     Parse CSV input into a board state dictionary. Format uses R3, B2, etc.
@@ -46,6 +47,7 @@ def parse_input(input: str) -> dict[Coord, CellState]:
         exit(1)
 
 
+# Take a list of actions
 def format_action(action: Action) -> str:
     """
     Format an action for output. Uses Direction.name (e.g. Down, Up, Left, Right).
