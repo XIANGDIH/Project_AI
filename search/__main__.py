@@ -3,7 +3,7 @@
 
 from sys import stdin
 from .core import Coord, CellState, PlayerColor, Action, MoveAction, EatAction, CascadeAction
-from .program import search
+from .program import search, a_star
 
 # WARNING: Please *do not* modify any of the code in this file, as this could
 #          break things in the submission environment. Failed test cases due to
@@ -80,7 +80,7 @@ def main():
     Main entry point for program.
     """
     input = parse_input(stdin.read())
-    sequence: list[Action] | None = search(input)
+    sequence: list[Action] | None = a_star(input)
     print_result(sequence)
 
 
