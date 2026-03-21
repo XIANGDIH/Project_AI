@@ -4,6 +4,7 @@
 from sys import stdin
 from .core import Coord, CellState, PlayerColor, Action, MoveAction, EatAction, CascadeAction
 from .program import search, a_star
+import time
 
 # WARNING: Please *do not* modify any of the code in this file, as this could
 #          break things in the submission environment. Failed test cases due to
@@ -80,8 +81,12 @@ def main():
     Main entry point for program.
     """
     input = parse_input(stdin.read())
+    start_time = time.perf_counter()
     sequence: list[Action] | None = a_star(input)
+    end_time = time.perf_counter()
     print_result(sequence)
+    print(f"solution len:\n{len(sequence)}")
+    print(f"time used:\n{end_time - start_time}")
 
 
 if __name__ == "__main__":

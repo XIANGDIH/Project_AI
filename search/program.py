@@ -4,7 +4,7 @@
 from .core import CellState, Coord, Direction, Action, MoveAction, EatAction, CascadeAction, PlayerColor
 from .utils import render_board
 from collections import deque
-from .check import get_new_possible_states
+from .check import get_new_possible_states, fast_heuristic, heuristic_basic, heuristic_blue_count_height, heuristic_bule_num, board_tiebreak
 from heapq import heappush, heappop
 
 
@@ -72,14 +72,7 @@ def search(
     return None
 
 
-def heuristic(
-    board: dict[Coord, CellState]
-) -> int:
-    count = 0
-    for cell in board.values():
-        if cell.color == PlayerColor.BLUE:
-            count += 1
-    return count
+
     
 
 def a_star(
@@ -92,10 +85,13 @@ def a_star(
 
     heap = []
     counter = 0
+
+    start_h = heuristic_bule_num(start)
+    start_tie = board_tiebreak(start)
     
     # push in f = h + g, g, tie_breaker, current board, path
     # tie breaker prevents errors when there are equal priorities  
-    heappush(heap, (heuristic(start), 0, counter, start, []))
+    heappush(heap, (start_h, *start_tie, 0, counter, start, []))
 
 
     # Record the minimum known value of g for each state (the minimum number of steps to reach that state)
@@ -103,7 +99,7 @@ def a_star(
 
     while heap:
         # Retrieve the state with the smallest f value from the priority queue 
-        f, g, _, current_board, path = heappop(heap)
+        f, tie1, tie2, tie3, g, _, current_board, path = heappop(heap)
         current_key = encode_state(current_board)
 
         # Skip if this record is no longer the optimal solution for the current state.
@@ -125,10 +121,18 @@ def a_star(
                 best_g[encoded] = new_g
                 # Give each new state a unique number to avoid heap comparisons between board objects.
                 counter += 1
-                new_f = new_g + heuristic(new_possible_state)
+
+                new_f = new_g + heuristic_bule_num(new_possible_state)
+                ties = board_tiebreak(new_possible_state)
+
                 heappush(
                     heap,
-                    (new_f, new_g, counter, new_possible_state, path + [correct_action])
+                    (new_f, 
+                     *ties,
+                     new_g, 
+                     counter, 
+                     new_possible_state, 
+                     path + [correct_action])
                 )
 
     return None
