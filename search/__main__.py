@@ -3,7 +3,8 @@
 
 from sys import stdin
 from .core import Coord, CellState, PlayerColor, Action, MoveAction, EatAction, CascadeAction
-from .program import search, a_star
+from .program import search, search_bfs
+import time
 
 # WARNING: Please *do not* modify any of the code in this file, as this could
 #          break things in the submission environment. Failed test cases due to
@@ -80,8 +81,15 @@ def main():
     Main entry point for program.
     """
     input = parse_input(stdin.read())
-    sequence: list[Action] | None = a_star(input)
+    start_time = time.perf_counter()
+    sequence: list[Action] | None = search(input)
+    end_time = time.perf_counter()
     print_result(sequence)
+    if sequence is None:
+        print("No solution found")
+    else:
+        print(f"Solution length: {len(sequence)}")
+    print(f"Time taken: {end_time - start_time:.6f} seconds")
 
 
 if __name__ == "__main__":

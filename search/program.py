@@ -5,6 +5,7 @@ from .core import CellState, Coord, Direction, Action, MoveAction, EatAction, Ca
 from .utils import render_board
 from collections import deque
 from .check import get_new_possible_states
+from .heuristic_work import heuristic
 from heapq import heappush, heappop
 
 
@@ -33,7 +34,7 @@ def encode_state(
     items.sort()
     return tuple(items)
 
-def search(
+def search_bfs(
     board: dict[Coord, CellState]
 ) -> list[Action] | None:
     """
@@ -72,20 +73,13 @@ def search(
     return None
 
 
-def heuristic(
-    board: dict[Coord, CellState]
-) -> int:
-    count = 0
-    for cell in board.values():
-        if cell.color == PlayerColor.BLUE:
-            count += 1
-    return count
-    
-
-def a_star(
+def search(
     board: dict[Coord, CellState]
 ) -> list[Action] | None:
     print(render_board(board, ansi=True))
+
+    generated = 0   # Total nodes generated
+    expanded = 0    # Nodes expanded
 
     start = board
     start_key = encode_state(start)
@@ -93,8 +87,8 @@ def a_star(
     heap = []
     counter = 0
     
-    # push in f = h + g, g, tie_breaker, current board, path
-    # tie breaker prevents errors when there are equal priorities  
+    # Push in f = h + g, g, tie_breaker, current board, path
+    # The tie breaker prevents errors when there are equal priorities  
     heappush(heap, (heuristic(start), 0, counter, start, []))
 
 
@@ -106,29 +100,37 @@ def a_star(
         f, g, _, current_board, path = heappop(heap)
         current_key = encode_state(current_board)
 
-        # Skip if this record is no longer the optimal solution for the current state.
+        # Skip if this record is no longer the optimal solution for the current state--we have already found a better path for the current state
         if best_g.get(current_key) != g:
             continue
 
+        expanded += 1
+
         # Target state found, return action path
         if is_goal(current_board):
+            print(f"Generated: {generated}")
+            print(f"Expanded: {expanded}")
+
             return path
         
         # Expand all successor states of the current state
-        for new_possible_state, correct_action in get_new_possible_states(current_board):
+        for new_possible_state, corress_action in get_new_possible_states(current_board):
             encoded = encode_state(new_possible_state)
             # The actual cost increases by 1 for each action executed
             new_g = g + 1
 
-            # Only keep best path that leads to the better state.
+            # Only keep best path that leads to the better state
+            # A new node is generated iff: (1) this state has not been reached or (2) it finds a shorter path to the current state
             if encoded not in best_g or new_g < best_g[encoded]:
+                generated += 1
+
                 best_g[encoded] = new_g
-                # Give each new state a unique number to avoid heap comparisons between board objects.
+                # Give each new state a unique number to avoid heap comparisons between board objects
                 counter += 1
                 new_f = new_g + heuristic(new_possible_state)
                 heappush(
                     heap,
-                    (new_f, new_g, counter, new_possible_state, path + [correct_action])
+                    (new_f, new_g, counter, new_possible_state, path + [corress_action])
                 )
 
     return None

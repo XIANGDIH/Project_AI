@@ -25,7 +25,7 @@ def push_stack(state: dict[Coord, CellState], coord: Coord, dr: int, dc: int, bo
 
     del state[coord]
 
-    # check bounds BEFORE constructing Coord
+    # Check whether the new landing cell is off the board or not
     if not (0 <= nr < board_n and 0 <= nc < board_n):
         return
 
@@ -125,7 +125,7 @@ def get_new_possible_states(given_state: dict[Coord, CellState]) -> list[tuple[d
             new_possible_state = given_state.copy()
             # sss1: Delete the current cell
             new_possible_state.pop(red_stack_p, None)
-            # sss2: Create new state for 1-current height away cells in this direction with eahc height of 1
+            # sss2: Create new state for 1-current height away cells in this direction with each height of 1
             for s in range(1, red_stack_state.height + 1):
                 coord_land_r = red_stack_p.r + s * direction.r
                 coord_land_c = red_stack_p.c + s * direction.c
