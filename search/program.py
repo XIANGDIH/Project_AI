@@ -34,6 +34,16 @@ def encode_state(
     items.sort()
     return tuple(items)
 
+
+def _min_dist_to_blue(coord: Coord, blues_list: list[Coord]) -> int:
+    best = 10**9
+    for blue in blues_list:
+        d = abs(coord.r - blue.r) + abs(coord.c - blue.c)
+        if d < best:
+            best = d
+    return best
+
+
 def search_bfs(
     board: dict[Coord, CellState]
 ) -> list[Action] | None:
@@ -73,6 +83,18 @@ def search_bfs(
     return None
 
 
+def reconstruct_path(goal_key, parent, parent_action):
+    actions = []
+    current = goal_key
+
+    while parent[current] is not None:
+        actions.append(parent_action[current])
+        current = parent[current]
+
+    actions.reverse()
+    return actions
+
+
 def search(
     board: dict[Coord, CellState]
 ) -> list[Action] | None:
@@ -86,56 +108,137 @@ def search(
 
     heap = []
     counter = 0
-    
-    # Push in f = h + g, g, tie_breaker, current board, path
-    # The tie breaker prevents errors when there are equal priorities  
-    heappush(heap, (heuristic(start), 0, counter, start, []))
 
+    # Caches:
+    # - state_cache: state_key -> canonical board object
+    # - h_cache: state_key -> heuristic value
+    # - blue_count_cache: state_key -> number of blue stacks
+    # - succ_cache: state_key -> ordered list of (child_key, action)
+    state_cache: dict[tuple, dict[Coord, CellState]] = {start_key: start}
+    h_cache: dict[tuple, float] = {start_key: heuristic(start)}
+    blue_count_cache: dict[tuple, int] = {
+        start_key: sum(1 for cell in start.values() if cell.color == PlayerColor.BLUE)
+    }
+    succ_cache: dict[tuple, list[tuple[tuple, Action]]] = {}
 
-    # Record the minimum known value of g for each state (the minimum number of steps to reach that state)
+    def get_h(state_key: tuple) -> float:
+        h = h_cache.get(state_key)
+        if h is None:
+            h = heuristic(state_cache[state_key])
+            h_cache[state_key] = h
+        return h
+
+    def get_blue_count(state_key: tuple) -> int:
+        count = blue_count_cache.get(state_key)
+        if count is None:
+            count = sum(
+                1 for cell in state_cache[state_key].values()
+                if cell.color == PlayerColor.BLUE
+            )
+            blue_count_cache[state_key] = count
+        return count
+
+    def get_successors(state_key: tuple) -> list[tuple[tuple, Action]]:
+        cached = succ_cache.get(state_key)
+        if cached is not None:
+            return cached
+
+        state_board = state_cache[state_key]
+        current_blue_count = get_blue_count(state_key)
+        blues_pos = [
+            coord for coord, cell in state_board.items()
+            if cell.color == PlayerColor.BLUE
+        ]
+
+        ranked_children: list[tuple[int, float, int, tuple, Action]] = []
+        for new_possible_state, correct_action in get_new_possible_states(state_board):
+            # Safe pruning: skip relocate-moves that move further away from all blue stacks.
+            if isinstance(correct_action, MoveAction) and blues_pos:
+                src = correct_action.coord
+                dst = src + correct_action.direction
+                if dst not in state_board:
+                    dist_before = _min_dist_to_blue(src, blues_pos)
+                    dist_after = _min_dist_to_blue(dst, blues_pos)
+                    if dist_after > dist_before:
+                        continue
+
+            child_key = encode_state(new_possible_state)
+            if child_key not in state_cache:
+                state_cache[child_key] = new_possible_state
+
+            child_blue_count = get_blue_count(child_key)
+            child_h = get_h(child_key)
+
+            # Successor ordering:
+            # 1) EAT
+            # 2) CASCADE that immediately reduces blue count
+            # 3) other CASCADE
+            # 4) MOVE
+            if isinstance(correct_action, EatAction):
+                action_rank = 0
+            elif isinstance(correct_action, CascadeAction):
+                action_rank = 1 if child_blue_count < current_blue_count else 2
+            else:
+                action_rank = 3
+
+            ranked_children.append(
+                (action_rank, child_h, child_blue_count, child_key, correct_action)
+            )
+
+        ranked_children.sort(key=lambda x: (x[0], x[1], x[2]))
+        ordered_children = [
+            (child_key, action)
+            for _, _, _, child_key, action in ranked_children
+        ]
+        succ_cache[state_key] = ordered_children
+        return ordered_children
+
+    # Push in f = h + g, g, tie_breaker, state_key
+    heappush(heap, (h_cache[start_key], 0, counter, start_key))
+
+    # Record the minimum known value of g for each state.
     best_g = {start_key: 0}
+    parent = {start_key: None}
+    parent_action = {start_key: None}
 
     while heap:
-        # Retrieve the state with the smallest f value from the priority queue 
-        f, g, _, current_board, path = heappop(heap)
-        current_key = encode_state(current_board)
+        # Retrieve the state with the smallest f value from the priority queue.
+        f, g, _, current_key = heappop(heap)
 
-        # Skip if this record is no longer the optimal solution for the current state--we have already found a better path for the current state
+        # Strict dedup: keep only the best-known g for each state.
         if best_g.get(current_key) != g:
             continue
 
+        current_board = state_cache[current_key]
         expanded += 1
 
-        # Target state found, return action path
+        # Target state found, reconstruct action path.
         if is_goal(current_board):
             print(f"Generated: {generated}")
             print(f"Expanded: {expanded}")
-
-            return path
+            return reconstruct_path(current_key, parent, parent_action)
         
-        # Expand all successor states of the current state
-        for new_possible_state, corress_action in get_new_possible_states(current_board):
-            encoded = encode_state(new_possible_state)
+        # Expand all successor states of the current state.
+        for encoded, corress_action in get_successors(current_key):
             # The actual cost increases by 1 for each action executed
             new_g = g + 1
 
-            # Only keep best path that leads to the better state
-            # A new node is generated iff: (1) this state has not been reached or (2) it finds a shorter path to the current state
-            if encoded not in best_g or new_g < best_g[encoded]:
-                generated += 1
+            old_g = best_g.get(encoded)
+            if old_g is not None and new_g >= old_g:
+                continue
 
-                best_g[encoded] = new_g
-                # Give each new state a unique number to avoid heap comparisons between board objects
-                counter += 1
-                new_f = new_g + heuristic(new_possible_state)
-                heappush(
-                    heap,
-                    (new_f, new_g, counter, new_possible_state, path + [corress_action])
-                )
+            generated += 1
+            best_g[encoded] = new_g
+            parent[encoded] = current_key
+            parent_action[encoded] = corress_action
+
+            # Give each new state a unique number to avoid heap comparison ties.
+            counter += 1
+            new_f = new_g + get_h(encoded)
+            heappush(heap, (new_f, new_g, counter, encoded))
 
     return None
 
 
         
-
 
