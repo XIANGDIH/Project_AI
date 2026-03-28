@@ -28,12 +28,34 @@ def encode_state(
     board: dict[Coord, CellState]
 ) -> tuple:
     """
+    Encode board into a canonical key under 8 dihedral symmetries of the 8x8 board.
+    This safely merges symmetric states and reduces search blow-up on highly
+    symmetric cases (e.g. all-four-corners layouts).
     """
-    items = []
+    items: list[tuple[int, int, int, int]] = []
     for coord, cell in board.items():
-        items.append((coord.r, coord.c, cell.color, cell.height))
-    items.sort()
-    return tuple(items)
+        items.append((coord.r, coord.c, cell.color.value, cell.height))
+
+    # Build 8 transformed encodings and take the lexicographically smallest one.
+    trans = [[] for _ in range(8)]
+    for r, c, color, h in items:
+        trans[0].append((r, c, color, h))             # identity
+        trans[1].append((c, 7 - r, color, h))         # rotate 90
+        trans[2].append((7 - r, 7 - c, color, h))     # rotate 180
+        trans[3].append((7 - c, r, color, h))         # rotate 270
+        trans[4].append((r, 7 - c, color, h))         # mirror vertical
+        trans[5].append((7 - r, c, color, h))         # mirror horizontal
+        trans[6].append((c, r, color, h))             # main diagonal
+        trans[7].append((7 - c, 7 - r, color, h))     # anti-diagonal
+
+    best = None
+    for t in trans:
+        t.sort()
+        key = tuple(t)
+        if best is None or key < best:
+            best = key
+
+    return best
 
 
 def _min_dist_to_blue(coord: Coord, blues_list: list[Coord]) -> int:
@@ -114,13 +136,14 @@ def search(
     # - state_cache: state_key -> canonical board object
     # - h_cache: state_key -> heuristic value
     # - blue_count_cache: state_key -> number of blue stacks
-    # - succ_cache: (state_key, prune_move_away) -> ordered list of (child_key, action)
+    # - succ_cache: (state_key, prune_move_away) -> ordered list of
+    #               (child_key, action, action_rank, child_blue_count)
     state_cache: dict[tuple, dict[Coord, CellState]] = {start_key: start}
     h_cache: dict[tuple, float] = {start_key: heuristic(start)}
     blue_count_cache: dict[tuple, int] = {
         start_key: sum(1 for cell in start.values() if cell.color == PlayerColor.BLUE)
     }
-    succ_cache: dict[tuple[tuple, bool], list[tuple[tuple, Action]]] = {}
+    succ_cache: dict[tuple[tuple, bool], list[tuple[tuple, Action, int, int]]] = {}
 
     def get_h(state_key: tuple) -> float:
         h = h_cache.get(state_key)
@@ -139,7 +162,10 @@ def search(
             blue_count_cache[state_key] = count
         return count
 
-    def get_successors(state_key: tuple, prune_move_away: bool = True) -> list[tuple[tuple, Action]]:
+    def get_successors(
+        state_key: tuple,
+        prune_move_away: bool = True
+    ) -> list[tuple[tuple, Action, int, int]]:
         cache_key = (state_key, prune_move_away)
         cached = succ_cache.get(cache_key)
         if cached is not None:
@@ -151,7 +177,8 @@ def search(
             coord for coord, cell in state_board.items()
             if cell.color == PlayerColor.BLUE
         ]
-        ranked_children: list[tuple[int, float, int, tuple, Action]] = []
+        # Same-layer dedup: keep only the best-ranked edge for each child state.
+        best_child: dict[tuple, tuple[int, float, int, Action]] = {}
         for new_possible_state, correct_action in get_new_possible_states(state_board):
             if prune_move_away and isinstance(correct_action, MoveAction) and blues_pos:
                 src = correct_action.coord
@@ -181,20 +208,28 @@ def search(
             else:
                 action_rank = 3
 
-            ranked_children.append(
-                (action_rank, child_h, child_blue_count, child_key, correct_action)
-            )
+            candidate = (action_rank, child_h, child_blue_count, correct_action)
+            prev = best_child.get(child_key)
+            if prev is None or (candidate[0], candidate[1], candidate[2]) < (prev[0], prev[1], prev[2]):
+                best_child[child_key] = candidate
 
+        ranked_children: list[tuple[int, float, int, tuple, Action]] = [
+            (rank, h, blue_cnt, child_key, action)
+            for child_key, (rank, h, blue_cnt, action) in best_child.items()
+        ]
         ranked_children.sort(key=lambda x: (x[0], x[1], x[2]))
         ordered_children = [
-            (child_key, action)
-            for _, _, _, child_key, action in ranked_children
+            (child_key, action, rank, blue_cnt)
+            for rank, _, blue_cnt, child_key, action in ranked_children
         ]
         succ_cache[cache_key] = ordered_children
         return ordered_children
 
-    # Push in f = h + g, g, tie_breaker, state_key
-    heappush(heap, (h_cache[start_key], 0, counter, start_key))
+    # Heap order:
+    # f -> blue_count -> action_rank -> -g -> counter
+    # action_rank for start uses 3 (same as MOVE) as neutral default.
+    start_blue_count = get_blue_count(start_key)
+    heappush(heap, (h_cache[start_key], start_blue_count, 3, 0, counter, 0, start_key))
 
     # Record the minimum known value of g for each state.
     best_g = {start_key: 0}
@@ -206,7 +241,7 @@ def search(
 
     while heap:
         # Retrieve the state with the smallest f value from the priority queue.
-        f, g, _, current_key = heappop(heap)
+        f, _, _, _, _, g, current_key = heappop(heap)
 
         # Strict dedup: keep only the best-known g for each state.
         if best_g.get(current_key) != g:
@@ -222,7 +257,11 @@ def search(
             break
         
         # Expand all successor states of the current state.
-        for encoded, corress_action in get_successors(current_key, prune_move_away=True):
+        parent_key = parent[current_key]
+        for encoded, corress_action, action_rank, child_blue_count in get_successors(current_key, prune_move_away=True):
+            # Avoid immediate backtracking to parent (safe for shortest paths with unit costs).
+            if parent_key is not None and encoded == parent_key:
+                continue
             # The actual cost increases by 1 for each action executed
             new_g = g + 1
 
@@ -238,7 +277,7 @@ def search(
             # Give each new state a unique number to avoid heap comparison ties.
             counter += 1
             new_f = new_g + get_h(encoded)
-            heappush(heap, (new_f, new_g, counter, encoded))
+            heappush(heap, (new_f, child_blue_count, action_rank, -new_g, counter, new_g, encoded))
 
     if best_actions is None:
         return None
@@ -268,7 +307,10 @@ def search(
                 best_len = len(better)
             break
 
-        for child_key, action in get_successors(key, prune_move_away=False):
+        parent_key2 = parent2[key]
+        for child_key, action, _, _ in get_successors(key, prune_move_away=False):
+            if parent_key2 is not None and child_key == parent_key2:
+                continue
             ng = g + 1
             if ng >= best_len:
                 continue
