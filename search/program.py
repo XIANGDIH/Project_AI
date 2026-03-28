@@ -7,6 +7,7 @@ from collections import deque
 from .check import get_new_possible_states
 from .heuristic_work import heuristic
 from heapq import heappush, heappop
+import time
 
 
 def is_goal(
@@ -113,13 +114,13 @@ def search(
     # - state_cache: state_key -> canonical board object
     # - h_cache: state_key -> heuristic value
     # - blue_count_cache: state_key -> number of blue stacks
-    # - succ_cache: state_key -> ordered list of (child_key, action)
+    # - succ_cache: (state_key, prune_move_away) -> ordered list of (child_key, action)
     state_cache: dict[tuple, dict[Coord, CellState]] = {start_key: start}
     h_cache: dict[tuple, float] = {start_key: heuristic(start)}
     blue_count_cache: dict[tuple, int] = {
         start_key: sum(1 for cell in start.values() if cell.color == PlayerColor.BLUE)
     }
-    succ_cache: dict[tuple, list[tuple[tuple, Action]]] = {}
+    succ_cache: dict[tuple[tuple, bool], list[tuple[tuple, Action]]] = {}
 
     def get_h(state_key: tuple) -> float:
         h = h_cache.get(state_key)
@@ -138,8 +139,9 @@ def search(
             blue_count_cache[state_key] = count
         return count
 
-    def get_successors(state_key: tuple) -> list[tuple[tuple, Action]]:
-        cached = succ_cache.get(state_key)
+    def get_successors(state_key: tuple, prune_move_away: bool = True) -> list[tuple[tuple, Action]]:
+        cache_key = (state_key, prune_move_away)
+        cached = succ_cache.get(cache_key)
         if cached is not None:
             return cached
 
@@ -149,11 +151,9 @@ def search(
             coord for coord, cell in state_board.items()
             if cell.color == PlayerColor.BLUE
         ]
-
         ranked_children: list[tuple[int, float, int, tuple, Action]] = []
         for new_possible_state, correct_action in get_new_possible_states(state_board):
-            # Safe pruning: skip relocate-moves that move further away from all blue stacks.
-            if isinstance(correct_action, MoveAction) and blues_pos:
+            if prune_move_away and isinstance(correct_action, MoveAction) and blues_pos:
                 src = correct_action.coord
                 dst = src + correct_action.direction
                 if dst not in state_board:
@@ -190,7 +190,7 @@ def search(
             (child_key, action)
             for _, _, _, child_key, action in ranked_children
         ]
-        succ_cache[state_key] = ordered_children
+        succ_cache[cache_key] = ordered_children
         return ordered_children
 
     # Push in f = h + g, g, tie_breaker, state_key
@@ -200,6 +200,9 @@ def search(
     best_g = {start_key: 0}
     parent = {start_key: None}
     parent_action = {start_key: None}
+
+    best_actions: list[Action] | None = None
+    best_len = 10**9
 
     while heap:
         # Retrieve the state with the smallest f value from the priority queue.
@@ -214,12 +217,12 @@ def search(
 
         # Target state found, reconstruct action path.
         if is_goal(current_board):
-            print(f"Generated: {generated}")
-            print(f"Expanded: {expanded}")
-            return reconstruct_path(current_key, parent, parent_action)
+            best_actions = reconstruct_path(current_key, parent, parent_action)
+            best_len = len(best_actions)
+            break
         
         # Expand all successor states of the current state.
-        for encoded, corress_action in get_successors(current_key):
+        for encoded, corress_action in get_successors(current_key, prune_move_away=True):
             # The actual cost increases by 1 for each action executed
             new_g = g + 1
 
@@ -237,8 +240,50 @@ def search(
             new_f = new_g + get_h(encoded)
             heappush(heap, (new_f, new_g, counter, encoded))
 
-    return None
+    if best_actions is None:
+        return None
+
+    # Short optimality-improvement phase:
+    # g-first search, no move-away pruning, and depth bound < current best.
+    phase2_deadline = time.perf_counter() + 6.0
+    heap2 = []
+    counter += 1
+    heappush(heap2, (0, get_h(start_key), counter, start_key))
+    best_g2 = {start_key: 0}
+    parent2 = {start_key: None}
+    parent_action2 = {start_key: None}
+
+    while heap2 and time.perf_counter() < phase2_deadline:
+        g, h, _, key = heappop(heap2)
+        if best_g2.get(key) != g:
+            continue
+        if g >= best_len:
+            continue
+
+        board_now = state_cache[key]
+        if is_goal(board_now):
+            better = reconstruct_path(key, parent2, parent_action2)
+            if len(better) < best_len:
+                best_actions = better
+                best_len = len(better)
+            break
+
+        for child_key, action in get_successors(key, prune_move_away=False):
+            ng = g + 1
+            if ng >= best_len:
+                continue
+            old = best_g2.get(child_key)
+            if old is not None and ng >= old:
+                continue
+            best_g2[child_key] = ng
+            parent2[child_key] = key
+            parent_action2[child_key] = action
+            counter += 1
+            heappush(heap2, (ng, get_h(child_key), counter, child_key))
+
+    print(f"Generated: {generated}")
+    print(f"Expanded: {expanded}")
+    return best_actions
 
 
         
-
