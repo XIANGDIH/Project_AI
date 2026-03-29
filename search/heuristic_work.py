@@ -1,5 +1,6 @@
 from .core import CellState, Coord, Direction, Action, MoveAction, EatAction, CascadeAction, PlayerColor
 from .check import push_stack
+from .heuristic import detect_board_state, next_blue_red, get_same_direction, successful_meaningful_cascade_num, BoardState, count_eliminated_stacks, successful_cascade
 
 def heuristic(board):
     blue_stacks = [(c, s) for c, s in board.items() if s.color == PlayerColor.BLUE]
@@ -7,6 +8,17 @@ def heuristic(board):
 
     if not blue_stacks:
         return 0.0
+    
+    dist_weight = 0.1
+    threat_weight = 0.5
+
+    # Check the current state of the given board, get the patterns the current board has
+    state = detect_board_state(blue_stacks, red_stacks)
+
+    if BoardState.CAMPACT_ALIGNMENT in state:
+        dist_weight -= 0.05
+    if BoardState.RED_SCARCITY in state:
+        dist_weight = 0.1
 
     total_dist = 0
     total_threat = 0
@@ -22,15 +34,15 @@ def heuristic(board):
             d = abs(coord_blue.r - coord_red.r) + abs(coord_blue.c - coord_red.c)
             best_dist = min(best_dist, d)
             # Threat
-            t = get_threat(coord_red, state_red, coord_blue, state_blue, board)
+            t = get_threat(coord_red, state_red, coord_blue, state_blue, board, state)
             best_threat = min(best_threat, t)
 
-        # The sum of the per-blue nearest-threat distance
+        # The sum of the per-blue nearest distance (smallest manhattan distance value)
         total_dist += best_dist
-        # The sum of the per-blue biggest-threat score
+        # The sum of the per-blue biggest threat (smallest threat value)
         total_threat += best_threat
     
-    return len(blue_stacks) + 0.1 * total_dist + 0.5 * total_threat
+    return len(blue_stacks) + dist_weight * total_dist + threat_weight * total_threat
 
 # Whether the number of enemies has decreased
 def has_eliminated (board_prev: dict[Coord, CellState], board_new: dict[Coord, CellState]) -> float:
@@ -48,59 +60,36 @@ def has_eliminated (board_prev: dict[Coord, CellState], board_new: dict[Coord, C
 
     return num_prev - num_new
 
+# Get the threat distance between the given Blue and Red pair--smaller value->greater threat to the current Blue stack
+# Improvement: Adjust the threat value according to different situation of the board
+def get_threat (coord_red: Coord, state_red: CellState, coord_blue: Coord, state_blue: CellState, board: dict[Coord, CellState], state: list[BoardState]) -> float:
+    state_impact_cascade = 0.0
+    state_impact_same_direction = 0.0
 
-# Get the threat distance between the given Blue and Red pair
-def get_threat (coord_red: Coord, state_red: CellState, coord_blue: Coord, state_blue: CellState, board: dict[Coord, CellState]) -> float:
+    if BoardState.CAMPACT_ALIGNMENT in state:
+        state_impact_cascade = 0.02
+
+    if BoardState.EDGE_CORNER_PRESSURE in state or BoardState.RED_SCARCITY in state:
+        state_impact_same_direction = 0.2
 
     # EAT possible next step for the given pair
     if next_blue_red(coord_red, coord_blue) and state_red.height >= state_blue.height:
         return 0.1
     
     # CASCADE possible next step for the given pair
-    possible_direction = same_direction_get(coord_red, coord_blue)
+    possible_direction = get_same_direction(coord_red, coord_blue)
 
     if state_red.height >= 2 and possible_direction is not None:
-        cascade_weight = successful_cascade_weighted(board, coord_red, state_red, possible_direction)
 
-        if cascade_weight >= 3:
-            return 0
-        elif cascade_weight > 0:
-            return 0.1 * (1/cascade_weight)
+        if successful_cascade(board, coord_red, state_red, coord_blue, possible_direction):
+            return 0.1 - state_impact_cascade
         else:
-            return 0.3
+            return 0.3 - state_impact_same_direction
     
-    return 1
-# abs(coord_blue.r - coord_red.r) + abs(coord_blue.c - coord_red.c)
-
-
-# Whether the specific Blue and Red stack pair is next to each other
-def next_blue_red (coord_red: Coord, coord_blue: Coord) -> bool:
-    distance_r = abs(coord_blue.r-coord_red.r)
-    distance_c = abs(coord_blue.c-coord_red.c)
-    next_same_r = (distance_r == 0) and (distance_c == 1)
-    next_same_c = (distance_c == 0) and (distance_r == 1)
-    return next_same_r or next_same_c
-
-# Whether the specific Blue and Red stack pair is in the same direction, if it is get the direction
-def same_direction_get (coord_red: Coord, coord_blue: Coord) -> Direction:
-    distance_r = abs(coord_blue.r-coord_red.r)
-    distance_c = abs(coord_blue.c-coord_red.c)
-    if distance_r == 0:
-        diff = coord_blue.c-coord_red.c
-        if diff > 0:
-            return Direction.Right
-        else:
-            return Direction.Left
-    if distance_c == 0:
-        diff = coord_blue.r-coord_red.r
-        if diff > 0:
-            return Direction.Down
-        else:
-            return Direction.Up
-    return None
+    return 1.0
 
 # Whether the cascade action of the specific Red stack is eliminating enemy stacks
-def successful_cascade_weighted (board: dict[Coord, CellState], coord_red: Coord, state_red: CellState, direction: Direction) -> float:
+def successful_cascade_num (board: dict[Coord, CellState], coord_red: Coord, state_red: CellState, direction: Direction) -> float:
     # Whether the height of the red stack we are looking at is >= 2
     if state_red.height < 2:
         return 0

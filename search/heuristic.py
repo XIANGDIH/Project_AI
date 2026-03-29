@@ -19,7 +19,7 @@ class BoardState(Enum):
 
 
 # Calculate the heuristic
-def heuristic(board: dict[Coord, CellState]):
+def heuristic (board: dict[Coord, CellState]):
     # {Basic.1} The number of Blue stacks
     # BUT the special case of saving effort need to be considered
     blue_stacks = [(c, s) for c, s in board.items() if s.color == PlayerColor.BLUE] # The length of this stack is the baseline
@@ -64,11 +64,11 @@ def heuristic(board: dict[Coord, CellState]):
     best_cascade_gain_bonus = get_cascade_bonus(board, blue_stacks, red_stacks)
     same_line_bonus = get_same_line_bonus(blue_stacks, red_stacks)
     
-    return enemy_count + 0.2 * setup_distance - eat_bonus - 0.2 * best_cascade_gain_bonus - 0.3 * same_line_bonus
+    return max(0, enemy_count + 0.2 * setup_distance - eat_bonus - 0.2 * best_cascade_gain_bonus - 0.3 * same_line_bonus)
 
 # Helpers
 # Check whether the given pair is one the same row/column and the distance between them <= 2
-def is_dense(coord_outer: Coord, coord_inner: Coord, detect_bound: int = 2) -> bool:
+def is_dense (coord_outer: Coord, coord_inner: Coord, detect_bound: int = 2) -> bool:
     if coord_outer == coord_inner:
         return False
 
@@ -82,30 +82,64 @@ def is_dense(coord_outer: Coord, coord_inner: Coord, detect_bound: int = 2) -> b
 
     return distance <= detect_bound
 
+# Check whether there is a Red stack in the middle of the "dense" Blue stack pairs
+def no_red_between (
+    coord_a: Coord,
+    coord_b: Coord,
+    red_stacks: list[tuple[Coord, CellState]]
+) -> bool:
+    # Must be aligned first
+    if coord_a.r == coord_b.r:
+        row = coord_a.r
+        c_min = min(coord_a.c, coord_b.c)
+        c_max = max(coord_a.c, coord_b.c)
+
+        for coord_red, _ in red_stacks:
+            if coord_red.r == row and c_min < coord_red.c < c_max:
+                return False
+        return True
+
+    if coord_a.c == coord_b.c:
+        col = coord_a.c
+        r_min = min(coord_a.r, coord_b.r)
+        r_max = max(coord_a.r, coord_b.r)
+
+        for coord_red, _ in red_stacks:
+            if coord_red.c == col and r_min < coord_red.r < r_max:
+                return False
+        return True
+
+    return False
+
 # Check whether the given coordinate is on one of the edge or one of the corner of the board
-def is_pressure(coord: Coord) -> bool:
+def is_pressure (coord: Coord) -> bool:
     return (
         coord.r == 0 or coord.r == board_n or
         coord.c == 0 or coord.c == board_n
     )
 
 # Detect the board's state so as to adjust the weight of each bonus in the heuristic
-def detect_board_state(
+def detect_board_state (
     blue_stacks: list[tuple[Coord, CellState]],
     red_stacks: list[tuple[Coord, CellState]]
 ) -> list[BoardState]:
     detected_state: list[BoardState] = []
 
-    # Flag A: compact aligned blues
+    # Flag A: compact aligned blues with no red in between
     dense_pair_count = 0
     for i, (coord_a, _) in enumerate(blue_stacks):
         for j in range(i + 1, len(blue_stacks)):
             coord_b, _ = blue_stacks[j]
-            if is_dense(coord_a, coord_b, detect_bound=2):
+
+            if (
+                is_dense(coord_a, coord_b, detect_bound=2)
+                and no_red_between(coord_a, coord_b, red_stacks)
+            ):
                 dense_pair_count += 1
                 if dense_pair_count >= 2:
                     detected_state.append(BoardState.CAMPACT_ALIGNMENT)
                     break
+
         if dense_pair_count >= 2:
             break
 
@@ -151,13 +185,13 @@ def get_setup_distance (blue_stacks: list[tuple[Coord, CellState]], red_stacks: 
 
 # {Bonus}
 # Whether the specific Blue and Red stack pair is next to each other
-def next_blue_red(coord_red: Coord, coord_blue: Coord) -> bool:
+def next_blue_red (coord_red: Coord, coord_blue: Coord) -> bool:
     dr = abs(coord_blue.r - coord_red.r)
     dc = abs(coord_blue.c - coord_red.c)
     return (dr == 1 and dc == 0) or (dr == 0 and dc == 1)
 
 # Whether the new coordinate is off the board
-def is_off_board_after(coord_old: Coord, step: int, direction: Direction) -> bool:
+def is_off_board_after (coord_old: Coord, step: int, direction: Direction, stack_in_between_num: int) -> bool:
     dr, dc = direction.value
 
     coord_new_r = coord_old.r + dr * step
@@ -165,7 +199,7 @@ def is_off_board_after(coord_old: Coord, step: int, direction: Direction) -> boo
     return not (0 <= coord_new_r <= board_n and 0 <= coord_new_c <= board_n)
 
 # Whether the specific Blue and Red stack pair is in the same direction, if it is get the direction
-def get_same_direction(coord_red: Coord, coord_blue: Coord) -> Direction | None:
+def get_same_direction (coord_red: Coord, coord_blue: Coord) -> Direction | None:
     if coord_red == coord_blue:
         return None
 
@@ -176,6 +210,34 @@ def get_same_direction(coord_red: Coord, coord_blue: Coord) -> Direction | None:
         return Direction.Down if coord_blue.r > coord_red.r else Direction.Up
 
     return None
+
+# Count how many stacks (no matter Blue or Red) are in between of the given pair
+def count_stacks_between (coord_a: Coord, coord_b: Coord, occupied: set[Coord]) -> int:
+    # Same row
+    if coord_a.r == coord_b.r:
+        row = coord_a.r
+        c_min = min(coord_a.c, coord_b.c)
+        c_max = max(coord_a.c, coord_b.c)
+
+        count = 0
+        for c in range(c_min + 1, c_max):
+            if Coord(row, c) in occupied:
+                count += 1
+        return count
+
+    # Same column
+    if coord_a.c == coord_b.c:
+        col = coord_a.c
+        r_min = min(coord_a.r, coord_b.r)
+        r_max = max(coord_a.r, coord_b.r)
+
+        count = 0
+        for r in range(r_min + 1, r_max):
+            if Coord(r, col) in occupied:
+                count += 1
+        return count
+
+    return 0
 
 # {EAT}
 # Check how many enemies we can eliminate through EAT on the current board
@@ -194,7 +256,7 @@ def get_immediate_eat_bonus (blue_stacks: list[tuple[Coord, CellState]], red_sta
 # {SAME DIRECTION}
 # Check the number of Blue stacks that have at least one aligned (same direction) red
 # [can be improved]
-def get_same_line_bonus(
+def get_same_line_bonus (
     blue_stacks: list[tuple[Coord, CellState]],
     red_stacks: list[tuple[Coord, CellState]]
 ) -> float:
@@ -226,7 +288,7 @@ def get_same_line_bonus(
 # Check how many enemies we can eliminate through CASCADE on the current board
 # And how many meaningful CASECADEs we can perform on the current board
 # Since we can only make one CASCADE action in the next step anyways, we will return the largest possible number that we can find for each of the Red stack on the current board
-def get_cascade_bonus(
+def get_cascade_bonus (
     board: dict[Coord, CellState],
     blue_stacks: list[tuple[Coord, CellState]],
     red_stacks: list[tuple[Coord, CellState]]
@@ -248,7 +310,7 @@ def get_cascade_bonus(
                 possible_directions.append(same_d)
 
         for direction in possible_directions:
-            score = successful_cascade_num_elimination(board, coord_red, state_red, direction)
+            score = successful_meaningful_cascade_num(board, coord_red, state_red, direction)
             best_for_this_red = max(best_for_this_red, score)
 
         best_possible_cascade = max(best_possible_cascade, best_for_this_red)
@@ -285,7 +347,7 @@ def get_possible_eats (blue_stacks: list[tuple[Coord, CellState]], red_stacks: l
     return total_possible_eats
 
 # The overall distance between each Blue stack and the corresponding closest edge
-def total_blue_edge_distance(board):
+def total_blue_edge_distance (board):
     total = 0
     for coord, state in board.items():
         if state.color == PlayerColor.BLUE:
@@ -293,7 +355,7 @@ def total_blue_edge_distance(board):
     return total
 
 # Whether the cascade action of the specific Red stack is eliminating enemy stacks
-def successful_cascade_num_elimination (board: dict[Coord, CellState], coord_red: Coord, state_red: CellState, direction: Direction) -> float:
+def successful_meaningful_cascade_num (board: dict[Coord, CellState], coord_red: Coord, state_red: CellState, direction: Direction) -> float:
     bonus = 0.0
 
     # Whether the height of the red stack we are looking at is >= 2
@@ -359,3 +421,24 @@ def successful_cascade_num_elimination (board: dict[Coord, CellState], coord_red
 
 
 # Warning: new_cascaded_board = {c: CellState(s.color, s.height) for c, s in board.items()}--about the shallow copy when generating a new possible after-cascaded board
+
+
+
+# Whether the cascade action of the specific Red stack is successful (it can eliminate the corresponding Blue stack we are looking at) or otherwise meaningful (in at least one of the three cases)
+# in terms of the given pair
+def successful_cascade (board: dict[Coord, CellState], coord_red: Coord, state_red: CellState, coord_blue: Coord, direction: Direction) -> float:
+    is_successful = False
+
+    # Whether the height of the red stack we are looking at is >= 2
+    if state_red.height < 2:
+        return 0.0
+    
+    step = state_red.height
+    board_stack_on = set(board.keys())
+    stack_inbetween_num = count_stacks_between(coord_red, coord_blue, board_stack_on)
+
+    # Get the new position of Blue stack we are looking at 
+    if is_off_board_after(coord_blue, step, direction, stack_inbetween_num):
+        is_successful = True
+
+    return is_successful
