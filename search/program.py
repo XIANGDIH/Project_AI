@@ -1,5 +1,6 @@
 # COMP30024 Artificial Intelligence, Semester 1 2026
 # Project Part A: Single Player Cascade
+# This file contains a functions that implement our two-phase searching algorithm/strategy.
 
 from .core import CellState, Coord, Direction, Action, MoveAction, EatAction, CascadeAction, PlayerColor, BOARD_N
 from .utils import render_board
@@ -12,7 +13,6 @@ import time
 BOARD_LAST_INDEX = BOARD_N - 1
 SYMMETRY_TRANSFORMS = 8
 
-
 # Whether the current state has already eliminated all blue stacks
 def is_goal(board: dict[Coord, CellState]) -> bool:
     """
@@ -23,7 +23,6 @@ def is_goal(board: dict[Coord, CellState]) -> bool:
         if cell.color == PlayerColor.BLUE:
             return False
     return True
-
 
 # Convert the board dictionary into a canonical tuple key
 # Also fold 8 board symmetries into one key to reduce duplicate states
@@ -64,7 +63,6 @@ def encode_state(board: dict[Coord, CellState]) -> tuple:
 
     return best
 
-
 # Get the distance from one coordinate to the nearest blue stack
 def _min_dist_to_blue(coord: Coord, blues_list: list[Coord]) -> int:
     best = 10**9
@@ -74,7 +72,6 @@ def _min_dist_to_blue(coord: Coord, blues_list: list[Coord]) -> int:
         if d < best:
             best = d
     return best
-
 
 # Baseline BFS (used for debugging / comparison)
 def search_bfs(board: dict[Coord, CellState]) -> list[Action] | None:
@@ -115,7 +112,6 @@ def search_bfs(board: dict[Coord, CellState]) -> list[Action] | None:
 
     return None
 
-
 # Recover action sequence from parent pointers
 def reconstruct_path(goal_key: tuple, parent: dict[tuple, tuple | None], parent_action: dict[tuple, Action | None]) -> list[Action]:
     actions = []
@@ -129,7 +125,6 @@ def reconstruct_path(goal_key: tuple, parent: dict[tuple, tuple | None], parent_
     # Reverse into start -> goal action order
     actions.reverse()
     return actions
-
 
 class SearchContext:
     """
@@ -242,7 +237,6 @@ class SearchContext:
             ordered_children.append((child_key, action, rank, blue_cnt))
         self.succ_cache[cache_key] = ordered_children
         return ordered_children
-
 
 # Main search:
 # Phase 1 uses heuristic-guided A* ordering

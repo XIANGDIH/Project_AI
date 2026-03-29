@@ -1,9 +1,7 @@
 # COMP30024 Artificial Intelligence, Semester 1 2026
 # Project Part A: Single Player Cascade
-# This file contains functions
-# Whether the current movement is legal or not--[P1]
-# Whether the current state has been seen--with the built-in python function, we are able to do it directly in the 
-# Whether the final goal has been reached
+# This file contains a functions that check whether the current movement is legal or not, 
+# and generate all the possible legal successors for the given board (parent configuration).
 
 from .core import CellState, Coord, Direction, Action, MoveAction, EatAction, CascadeAction, PlayerColor
 
@@ -13,7 +11,7 @@ def push_stack(state: dict[Coord, CellState], coord: Coord, dr: int, dc: int, bo
 
     If the next cell is occupied, recursively push that stack first.
     If pushed off the board, the stack is eliminated.
-    Mutates `state` in place.
+    Mutate `state` in place.
     """
     if coord not in state:
         return
@@ -38,6 +36,13 @@ def push_stack(state: dict[Coord, CellState], coord: Coord, dr: int, dc: int, bo
 
 
 def get_new_possible_states(given_state: dict[Coord, CellState]) -> list[tuple[dict[Coord, CellState], Action]]:
+    """
+    Check all the 4 possible directions and all 4 legal actions for all of the current Red stacks on the board.
+
+    If for a specific Red stack, one this specific direction, this specific action is legal according to the
+    game rule, put the new board configuration after the application of this action into the possible states list.
+    Return the list of all possible/legal board configurations and its corresponding action it applied.
+    """
     # The list of new states (dictionaries) to be return
     new_possible_state_lst = []
 

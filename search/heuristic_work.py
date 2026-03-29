@@ -1,6 +1,9 @@
-from .core import CellState, Coord, Direction, Action, MoveAction, EatAction, CascadeAction, PlayerColor
-from .check import push_stack
-from .heuristic import detect_board_state, next_blue_red, get_same_direction, successful_meaningful_cascade_num, BoardState, count_eliminated_stacks, successful_cascade
+# COMP30024 Artificial Intelligence, Semester 1 2026
+# Project Part A: Single Player Cascade
+# This file contains a functions that calculate the heuristic value for the current board configuration.
+
+from .core import CellState, Coord, PlayerColor
+from .heuristic import detect_board_state, next_blue_red, get_same_direction, BoardState, successful_cascade
 
 def heuristic(board):
     blue_stacks = [(c, s) for c, s in board.items() if s.color == PlayerColor.BLUE]
@@ -62,22 +65,6 @@ def heuristic(board):
     
     return len(blue_stacks) + dist_weight * total_dist + threat_weight * total_threat
 
-# Whether the number of enemies has decreased
-def has_eliminated (board_prev: dict[Coord, CellState], board_new: dict[Coord, CellState]) -> float:
-    # Find the previous number of enemy stacks on the board
-    num_prev = 0
-    for cell in board_prev.values():
-        if cell.color == PlayerColor.BLUE:
-            num_prev += 1
-
-    # Find the new number of enemy stacks on the board
-    num_new = 0
-    for cell in board_new.values():
-        if cell.color == PlayerColor.BLUE:
-            num_new += 1
-
-    return num_prev - num_new
-
 # Get the threat distance between the given Blue and Red pair--smaller value->greater threat to the current Blue stack
 # Improvement: Adjust the threat value according to different situation of the board
 def get_threat (coord_red: Coord, state_red: CellState, coord_blue: Coord, state_blue: CellState, board: dict[Coord, CellState], state: list[BoardState]) -> float:
@@ -105,41 +92,3 @@ def get_threat (coord_red: Coord, state_red: CellState, coord_blue: Coord, state
             return 0.3 - state_impact_same_direction
     
     return 1.0
-
-# Whether the cascade action of the specific Red stack is eliminating enemy stacks
-def successful_cascade_num (board: dict[Coord, CellState], coord_red: Coord, state_red: CellState, direction: Direction) -> float:
-    # Whether the height of the red stack we are looking at is >= 2
-    if state_red.height < 2:
-        return 0
-
-    # Generate the new state after this state (after performing CASCADE of the red stack we are looking at)
-    new_cascaded_board = board.copy()
-    # s1: Delete the current cell
-    new_cascaded_board.pop(coord_red, None)
-
-    # s2: Create new state for 1-current height away cells in this direction with each height of 1
-    for s in range(1, state_red.height + 1):
-        coord_land_r = coord_red.r + s * direction.r
-        coord_land_c = coord_red.c + s * direction.c
-
-        # Whether the current lading cell is out of the boundary
-        if not (0 <= coord_land_r < 8 and 0 <= coord_land_c < 8):
-            break
-        coord_land = Coord(
-            coord_land_r,
-            coord_land_c
-            )
-                
-        # Whether there is a stack on the on the about-to-land cell
-        if coord_land in new_cascaded_board:
-            # We need to push forward
-            push_stack(new_cascaded_board, coord_land, direction.r, direction.c, 8)
-                
-        # Now the current landing cell is clear
-        new_cascaded_board[coord_land] = CellState(state_red.color, 1)
-    
-    num_eliminated = has_eliminated(board, new_cascaded_board)
-    if num_eliminated >= 1:
-        return num_eliminated
-    
-    return 0

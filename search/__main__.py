@@ -84,12 +84,12 @@ def main():
     start_time = time.perf_counter()
     sequence: list[Action] | None = search(input)
     end_time = time.perf_counter()
-    print_result(sequence)
+    #print_result(sequence)
     if sequence is None:
         print("No solution found")
     else:
         print(f"Solution length: {len(sequence)}")
-    print(f"Time taken: {end_time - start_time:.6f} seconds")
+    #print(f"Time taken: {end_time - start_time:.6f} seconds")
 
 
 if __name__ == "__main__":
