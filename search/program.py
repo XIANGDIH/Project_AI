@@ -1,7 +1,7 @@
 # COMP30024 Artificial Intelligence, Semester 1 2026
 # Project Part A: Single Player Cascade
 
-from .core import CellState, Coord, Direction, Action, MoveAction, EatAction, CascadeAction, PlayerColor
+from .core import CellState, Coord, Direction, Action, MoveAction, EatAction, CascadeAction, PlayerColor, BOARD_N
 from .utils import render_board
 from collections import deque
 from .check import get_new_possible_states
@@ -9,6 +9,7 @@ from .heuristic_work import heuristic
 from heapq import heappush, heappop
 import time
 
+BOUND = BOARD_N - 1
 
 # Whether the current state has already eliminated all blue stacks
 def is_goal(board: dict[Coord, CellState]) -> bool:
@@ -43,13 +44,13 @@ def encode_state(board: dict[Coord, CellState]) -> tuple:
     # For each stack, add its coordinate under each symmetry
     for r, c, color, h in items:
         trans[0].append((r, c, color, h))             # identity
-        trans[1].append((c, 7 - r, color, h))         # rotate 90
-        trans[2].append((7 - r, 7 - c, color, h))     # rotate 180
-        trans[3].append((7 - c, r, color, h))         # rotate 270
-        trans[4].append((r, 7 - c, color, h))         # mirror vertical
-        trans[5].append((7 - r, c, color, h))         # mirror horizontal
+        trans[1].append((c, BOUND - r, color, h))         # rotate 90
+        trans[2].append((BOUND - r, BOUND - c, color, h))     # rotate 180
+        trans[3].append((BOUND - c, r, color, h))         # rotate 2BOUND0
+        trans[4].append((r, BOUND - c, color, h))         # mirror vertical
+        trans[5].append((BOUND - r, c, color, h))         # mirror horizontal
         trans[6].append((c, r, color, h))             # main diagonal
-        trans[7].append((7 - c, 7 - r, color, h))     # anti-diagonal
+        trans[7].append((BOUND - c, BOUND - r, color, h))     # anti-diagonal
 
     best = None
     # Canonical key = smallest tuple among 8 symmetry variants
@@ -63,7 +64,7 @@ def encode_state(board: dict[Coord, CellState]) -> tuple:
 
 
 # Get the distance from one coordinate to the nearest blue stack
-def _min_dist_to_blue(coord: Coord, blues_list: list[Coord]) -> int:
+def min_dist_to_blue(coord: Coord, blues_list: list[Coord]) -> int:
     best = 10**9
     # Scan all blue stacks and keep the minimum Manhattan distance
     for blue in blues_list:
@@ -132,9 +133,6 @@ class SearchContext:
     """
     Hold per-search caches and helper methods for heuristic and successor expansion.
     """
-    # Keep the context object lightweight and explicit.
-    __slots__ = ("state_cache", "h_cache", "blue_count_cache", "succ_cache")
-
     def __init__(self, start_key: tuple, start_board: dict[Coord, CellState]):
         # Map encoded state -> board object used by search.
         # self.state_cache: dict[tuple, dict[Coord, CellState]]
@@ -198,8 +196,8 @@ class SearchContext:
                 src = correct_action.coord
                 dst = src + correct_action.direction
                 if dst not in state_board:
-                    dist_before = _min_dist_to_blue(src, blues_pos)
-                    dist_after = _min_dist_to_blue(dst, blues_pos)
+                    dist_before = min_dist_to_blue(src, blues_pos)
+                    dist_after = min_dist_to_blue(dst, blues_pos)
                     if dist_after > dist_before:
                         continue
 
