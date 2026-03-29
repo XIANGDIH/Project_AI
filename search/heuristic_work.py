@@ -14,11 +14,29 @@ def heuristic(board):
 
     # Check the current state of the given board, get the patterns the current board has
     state = detect_board_state(blue_stacks, red_stacks)
+    if BoardState.COMPACT_ALIGNMENT in state:
+        if BoardState.RED_SCARCITY in state:
+            # BEST situation: close + few enemies → kill efficiently
+            dist_weight -= 0.06
+            threat_weight += 0.065
 
-    if BoardState.CAMPACT_ALIGNMENT in state:
-        dist_weight -= 0.05
-    if BoardState.RED_SCARCITY in state:
-        dist_weight = 0.1
+        else:
+            # Close but still many enemies
+            dist_weight -= 0.05
+            threat_weight += 0.06
+
+    elif BoardState.BLUE_SCATTERED in state:
+        if BoardState.RED_SCARCITY in state:
+            # Mixed case
+            dist_weight += 0.02
+            threat_weight += 0.01
+        else:
+            dist_weight += 0.03
+            threat_weight -= 0.04
+
+    elif BoardState.RED_SCARCITY in state:
+        dist_weight -= 0.02
+        threat_weight += 0.04
 
     total_dist = 0
     total_threat = 0
@@ -66,10 +84,10 @@ def get_threat (coord_red: Coord, state_red: CellState, coord_blue: Coord, state
     state_impact_cascade = 0.0
     state_impact_same_direction = 0.0
 
-    if BoardState.CAMPACT_ALIGNMENT in state:
+    if BoardState.COMPACT_ALIGNMENT in state:
         state_impact_cascade = 0.02
 
-    if BoardState.EDGE_CORNER_PRESSURE in state or BoardState.RED_SCARCITY in state:
+    if BoardState.EDGE_CORNER_PRESSURE in state or BoardState.RED_SCARCITY in state or BoardState.BLUE_SCATTERED in state:
         state_impact_same_direction = 0.2
 
     # EAT possible next step for the given pair

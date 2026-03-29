@@ -6,13 +6,15 @@ from enum import Enum
 
 board_n = 7
 detect_bound = 2
+detect_bound_dist = 4
 
 from enum import Enum, auto
 
 class BoardState(Enum):
-    CAMPACT_ALIGNMENT = auto()       # at least 3 blues are close / line-clustered / fortressed
-    EDGE_CORNER_PRESSURE = auto() # at least 2 blues are on edges/corners
-    RED_SCARCITY = auto()         # number of blues - number of reds >= 3
+    COMPACT_ALIGNMENT = auto()       # at least 3 Blues are close / line-clustered / fortressed
+    EDGE_CORNER_PRESSURE = auto() # at least 2 Blues are on edges/corners
+    RED_SCARCITY = auto()         # number of Blues - number of reds >= 3
+    BLUE_SCATTERED = auto()   # number of Blues are far away from each other >= 2
 
     def __str__(self) -> str:
         return self.name
@@ -47,7 +49,7 @@ def heuristic (board: dict[Coord, CellState]):
     # {Current Environment}
     # Check the board's current state and adjust the weight of the bonus
     state = detect_board_state(blue_stacks, red_stacks)
-    if BoardState.CAMPACT_ALIGNMENT in state:
+    if BoardState.COMPACT_ALIGNMENT in state:
         w_cascade += 0.25
 
     if BoardState.EDGE_CORNER_PRESSURE in state:
@@ -68,7 +70,7 @@ def heuristic (board: dict[Coord, CellState]):
 
 # Helpers
 # Check whether the given pair is one the same row/column and the distance between them <= 2
-def is_dense (coord_outer: Coord, coord_inner: Coord, detect_bound: int = 2) -> bool:
+def is_dense (coord_outer: Coord, coord_inner: Coord) -> bool:
     if coord_outer == coord_inner:
         return False
 
@@ -81,6 +83,13 @@ def is_dense (coord_outer: Coord, coord_inner: Coord, detect_bound: int = 2) -> 
     distance = distance_r + distance_c
 
     return distance <= detect_bound
+
+# Check whether the given pair is at least 4 cells from each other
+def is_scatter (coord_outer: Coord, coord_inner: Coord) -> bool:
+    if coord_outer == coord_inner:
+        return False
+    
+    return get_Manhattan_distance(coord_inner, coord_outer) >= detect_bound_dist
 
 # Check whether there is a Red stack in the middle of the "dense" Blue stack pairs
 def no_red_between (
@@ -118,32 +127,28 @@ def is_pressure (coord: Coord) -> bool:
         coord.c == 0 or coord.c == board_n
     )
 
-# Detect the board's state so as to adjust the weight of each bonus in the heuristic
-def detect_board_state (
+def detect_board_state(
     blue_stacks: list[tuple[Coord, CellState]],
     red_stacks: list[tuple[Coord, CellState]]
 ) -> list[BoardState]:
     detected_state: list[BoardState] = []
 
-    # Flag A: compact aligned blues with no red in between
+    # Flag A: Compact aligned blues with no red in between
     dense_pair_count = 0
     for i, (coord_a, _) in enumerate(blue_stacks):
         for j in range(i + 1, len(blue_stacks)):
             coord_b, _ = blue_stacks[j]
 
-            if (
-                is_dense(coord_a, coord_b, detect_bound=2)
-                and no_red_between(coord_a, coord_b, red_stacks)
-            ):
+            if is_dense(coord_a, coord_b) and no_red_between(coord_a, coord_b, red_stacks):
                 dense_pair_count += 1
                 if dense_pair_count >= 2:
-                    detected_state.append(BoardState.CAMPACT_ALIGNMENT)
                     break
 
         if dense_pair_count >= 2:
+            detected_state.append(BoardState.COMPACT_ALIGNMENT)
             break
 
-    # Flag B: edge / corner pressure
+    # Flag B: Edge / corner pressure
     pressure_num = 0
     for coord_blue, _ in blue_stacks:
         if is_pressure(coord_blue):
@@ -152,16 +157,33 @@ def detect_board_state (
                 detected_state.append(BoardState.EDGE_CORNER_PRESSURE)
                 break
 
-    # Flag C: red scarcity
+    # Flag C: Red scarcity
     if len(blue_stacks) - len(red_stacks) >= 2:
         detected_state.append(BoardState.RED_SCARCITY)
+
+    # Flag D: Blue scattered
+    scatter_pair_count = 0
+    for i, (coord_a, _) in enumerate(blue_stacks):
+        for j in range(i + 1, len(blue_stacks)):
+            coord_b, _ = blue_stacks[j]
+
+            if is_scatter(coord_a, coord_b):
+                scatter_pair_count += 1
+                if scatter_pair_count >= 2:
+                    break
+
+        if scatter_pair_count >= 2:
+            break
+
+    if scatter_pair_count >= 2 and dense_pair_count == 0:
+        detected_state.append(BoardState.BLUE_SCATTERED)
 
     return detected_state
 
 
 # {Basic}
-def get_Manhattan_distance (coord_red, coord_blue) -> float:
-    return abs(coord_blue.r - coord_red.r) + abs(coord_blue.c - coord_red.c)
+def get_Manhattan_distance (coord_a, coord_b) -> float:
+    return abs(coord_b.r - coord_a.r) + abs(coord_b.c - coord_a.c)
 
 # Use Manhattan distance as the set-up distance
 def get_setup_distance (blue_stacks: list[tuple[Coord, CellState]], red_stacks: list[tuple[Coord, CellState]]) -> float:

@@ -1,13 +1,16 @@
 # COMP30024 Artificial Intelligence, Semester 1 2026
 # Project Part A: Single Player Cascade
 
-from .core import CellState, Coord, Direction, Action, MoveAction, EatAction, CascadeAction, PlayerColor
+from .core import CellState, Coord, Direction, Action, MoveAction, EatAction, CascadeAction, PlayerColor, BOARD_N
 from .utils import render_board
 from collections import deque
 from .check import get_new_possible_states
 from .heuristic_work import heuristic
 from heapq import heappush, heappop
 import time
+
+BOARD_LAST_INDEX = BOARD_N - 1
+SYMMETRY_TRANSFORMS = 8
 
 
 # Whether the current state has already eliminated all blue stacks
@@ -26,7 +29,7 @@ def is_goal(board: dict[Coord, CellState]) -> bool:
 # Also fold 8 board symmetries into one key to reduce duplicate states
 def encode_state(board: dict[Coord, CellState]) -> tuple:
     """
-    Encode board into a canonical key under 8 dihedral symmetries of the 8x8 board.
+    Encode board into a canonical key under 8 dihedral symmetries of the board.
     This safely merges symmetric states and reduces search blow-up on highly
     symmetric cases (e.g. all-four-corners layouts).
     """
@@ -38,18 +41,18 @@ def encode_state(board: dict[Coord, CellState]) -> tuple:
 
     # Build 8 transformed encodings and take the lexicographically smallest one.
     trans = []
-    for _ in range(8):
+    for _ in range(SYMMETRY_TRANSFORMS):
         trans.append([])
     # For each stack, add its coordinate under each symmetry
     for r, c, color, h in items:
         trans[0].append((r, c, color, h))             # identity
-        trans[1].append((c, 7 - r, color, h))         # rotate 90
-        trans[2].append((7 - r, 7 - c, color, h))     # rotate 180
-        trans[3].append((7 - c, r, color, h))         # rotate 270
-        trans[4].append((r, 7 - c, color, h))         # mirror vertical
-        trans[5].append((7 - r, c, color, h))         # mirror horizontal
+        trans[1].append((c, BOARD_LAST_INDEX - r, color, h))         # rotate 90
+        trans[2].append((BOARD_LAST_INDEX - r, BOARD_LAST_INDEX - c, color, h))     # rotate 180
+        trans[3].append((BOARD_LAST_INDEX - c, r, color, h))         # rotate 270
+        trans[4].append((r, BOARD_LAST_INDEX - c, color, h))         # mirror vertical
+        trans[5].append((BOARD_LAST_INDEX - r, c, color, h))         # mirror horizontal
         trans[6].append((c, r, color, h))             # main diagonal
-        trans[7].append((7 - c, 7 - r, color, h))     # anti-diagonal
+        trans[7].append((BOARD_LAST_INDEX - c, BOARD_LAST_INDEX - r, color, h))     # anti-diagonal
 
     best = None
     # Canonical key = smallest tuple among 8 symmetry variants
@@ -261,12 +264,9 @@ def search(board: dict[Coord, CellState]) -> list[Action] | None:
     ctx = SearchContext(start_key, start)
 
     # Phase 1 heap order:
-    # f -> blue_count -> action_rank -> -g -> counter
-    # action_rank for start uses 3 (same as MOVE) as neutral default.
-    start_blue_count = ctx.get_blue_count(start_key)
-    # Heap entry layout:
-    # (f, blue_count, action_rank, -g, tie_counter, g, state_key)
-    heappush(heap, (ctx.h_cache[start_key], start_blue_count, 3, 0, counter, 0, start_key))
+    # Pure A*: f = g + h (counter only for stable tie-breaking)
+    # Heap entry layout: (f, tie_counter, g, state_key)
+    heappush(heap, (ctx.h_cache[start_key], counter, 0, start_key))
 
     # Record the minimum known g for each state and keep parent links
     best_g = {start_key: 0}
@@ -280,7 +280,7 @@ def search(board: dict[Coord, CellState]) -> list[Action] | None:
     # Phase 1 search loop
     while heap:
         # Pop the best candidate from heap
-        f, _, _, _, _, g, current_key = heappop(heap)
+        f, _, g, current_key = heappop(heap)
 
         # Skip stale queue entries
         if best_g.get(current_key) != g:
@@ -297,7 +297,7 @@ def search(board: dict[Coord, CellState]) -> list[Action] | None:
         
         # Expand successors
         parent_key = parent[current_key]
-        for encoded, corress_action, action_rank, child_blue_count in ctx.get_successors(current_key, prune_move_away=True):
+        for encoded, corress_action, _, _ in ctx.get_successors(current_key, prune_move_away=True):
             # Avoid immediate two-step backtracking to parent
             if parent_key is not None and encoded == parent_key:
                 continue
@@ -317,7 +317,7 @@ def search(board: dict[Coord, CellState]) -> list[Action] | None:
             # Give each new state a unique number to avoid heap comparison ties.
             counter += 1
             new_f = new_g + ctx.get_h(encoded)
-            heappush(heap, (new_f, child_blue_count, action_rank, -new_g, counter, new_g, encoded))
+            heappush(heap, (new_f, counter, new_g, encoded))
 
     # No feasible solution found in phase 1
     if best_actions is None:
