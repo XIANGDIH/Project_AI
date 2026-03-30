@@ -6,6 +6,10 @@ from .core import CellState, Coord, PlayerColor
 from .heuristic import detect_board_state, next_blue_red, get_same_direction, BoardState, successful_cascade
 
 def heuristic(board):
+    """
+    Compute the heuristic value for a board state.
+    Lower values indicate states estimated to be closer to a solution.
+    """
     blue_stacks = [(c, s) for c, s in board.items() if s.color == PlayerColor.BLUE]
     red_stacks = [(c, s) for c, s in board.items() if s.color == PlayerColor.RED]
 
@@ -68,6 +72,10 @@ def heuristic(board):
 # Get the threat distance between the given Blue and Red pair--smaller value->greater threat to the current Blue stack
 # Improvement: Adjust the threat value according to different situation of the board
 def get_threat (coord_red: Coord, state_red: CellState, coord_blue: Coord, state_blue: CellState, board: dict[Coord, CellState], state: list[BoardState]) -> float:
+    """
+    Estimate how threatening a Red stack is to a specific Blue stack.
+    Smaller values represent stronger immediate or near-future threat.
+    """
     state_impact_cascade = 0.0
     state_impact_same_direction = 0.0
 

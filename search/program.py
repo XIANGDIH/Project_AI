@@ -4,7 +4,6 @@
 
 from .core import CellState, Coord, Direction, Action, MoveAction, EatAction, CascadeAction, PlayerColor, BOARD_N
 from .utils import render_board
-from collections import deque
 from .check import get_new_possible_states
 from .heuristic_work import heuristic
 from heapq import heappush, heappop
@@ -73,47 +72,12 @@ def _min_dist_to_blue(coord: Coord, blues_list: list[Coord]) -> int:
             best = d
     return best
 
-# Baseline BFS (used for debugging / comparison)
-def search_bfs(board: dict[Coord, CellState]) -> list[Action] | None:
-    """
-    This is the entry point for your submission. You should modify this
-    function to solve the search problem discussed in the Part A specification.
-    See `core.py` for information on the types being used here.
-
-    Parameters:
-        `board`: a dictionary representing the initial board state, mapping
-            coordinates to `CellState` instances (each with a `.color` and
-            `.height` attribute).
-
-    Returns:
-        A list of actions (MoveAction, EatAction, or CascadeAction), or `None`
-        if no solution is possible.
-    """
-    # Check the current board situation
-    print(render_board(board, ansi=True))
-
-    visited = {encode_state(board)}
-    queue = deque([(board, [])])
-
-    while queue:
-        current_board, path = queue.popleft()
-
-        # BFS returns immediately when reaching first goal layer
-        if is_goal(current_board):
-            return path
-
-        for new_possible_state, correct_action in get_new_possible_states(current_board):
-            encoded = encode_state(new_possible_state)
-
-            if encoded not in visited:
-                visited.add(encoded)
-                # Append one extra action to current path
-                queue.append((new_possible_state, path + [correct_action]))
-
-    return None
-
 # Recover action sequence from parent pointers
 def reconstruct_path(goal_key: tuple, parent: dict[tuple, tuple | None], parent_action: dict[tuple, Action | None]) -> list[Action]:
+    """
+    Reconstruct an action sequence from parent pointers.
+    Returns actions in start-to-goal order.
+    """
     actions = []
     current = goal_key
 
@@ -130,8 +94,6 @@ class SearchContext:
     """
     Hold per-search caches and helper methods for heuristic and successor expansion.
     """
-    # Keep the context object lightweight and explicit.
-    __slots__ = ("state_cache", "h_cache", "blue_count_cache", "succ_cache")
 
     def __init__(self, start_key: tuple, start_board: dict[Coord, CellState]):
         # Map encoded state -> board object used by search.
@@ -242,6 +204,10 @@ class SearchContext:
 # Phase 1 uses heuristic-guided A* ordering
 # Phase 2 uses short g-first refinement to try finding a shorter solution
 def search(board: dict[Coord, CellState]) -> list[Action] | None:
+    """
+    Solve the board with a two-stage search strategy.
+    Stage 1 finds an initial solution, and stage 2 tries to improve it.
+    """
     print(render_board(board, ansi=True))
 
     # Search counters

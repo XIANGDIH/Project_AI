@@ -25,6 +25,10 @@ class BoardState(Enum):
 # Helpers
 # Check whether the given pair is one the same row/column and the distance between them <= 2
 def is_dense (coord_outer: Coord, coord_inner: Coord) -> bool:
+    """
+    Check whether two coordinates are aligned and close.
+    Returns True when they share a row/column within the dense distance bound.
+    """
     if coord_outer == coord_inner:
         return False
 
@@ -40,6 +44,10 @@ def is_dense (coord_outer: Coord, coord_inner: Coord) -> bool:
 
 # Check whether the given pair is at least 4 cells from each other
 def is_scatter (coord_outer: Coord, coord_inner: Coord) -> bool:
+    """
+    Check whether two coordinates are far apart.
+    Returns True when Manhattan distance is at least the scatter bound.
+    """
     if coord_outer == coord_inner:
         return False
     
@@ -51,6 +59,10 @@ def no_red_between (
     coord_b: Coord,
     red_stacks: list[tuple[Coord, CellState]]
 ) -> bool:
+    """
+    Check whether no red stack lies strictly between two aligned coordinates.
+    Returns False for non-aligned coordinates.
+    """
     # Must be aligned first
     if coord_a.r == coord_b.r:
         row = coord_a.r
@@ -76,6 +88,9 @@ def no_red_between (
 
 # Check whether the given coordinate is on one of the edge or one of the corner of the board
 def is_pressure (coord: Coord) -> bool:
+    """
+    Check whether a coordinate is on the board edge or corner.
+    """
     return (
         coord.r == 0 or coord.r == board_n or
         coord.c == 0 or coord.c == board_n
@@ -85,6 +100,9 @@ def detect_board_state(
     blue_stacks: list[tuple[Coord, CellState]],
     red_stacks: list[tuple[Coord, CellState]]
 ) -> list[BoardState]:
+    """
+    Detect high-level board patterns used to adapt heuristic weights.
+    """
     detected_state: list[BoardState] = []
 
     # Flag A: Compact aligned blues with no red in between
@@ -137,17 +155,26 @@ def detect_board_state(
 
 # {Basic}
 def get_Manhattan_distance (coord_a, coord_b) -> float:
+    """
+    Compute Manhattan distance between two coordinates.
+    """
     return abs(coord_b.r - coord_a.r) + abs(coord_b.c - coord_a.c)
 
 # {Bonus}
 # Whether the specific Blue and Red stack pair is next to each other
 def next_blue_red (coord_red: Coord, coord_blue: Coord) -> bool:
+    """
+    Check whether a Red and Blue stack are adjacent orthogonally.
+    """
     dr = abs(coord_blue.r - coord_red.r)
     dc = abs(coord_blue.c - coord_red.c)
     return (dr == 1 and dc == 0) or (dr == 0 and dc == 1)
 
 # Whether the new coordinate is off the board
 def is_off_board_after (coord_old: Coord, step: int, direction: Direction, stack_in_between_num: int) -> bool:
+    """
+    Check whether moving a coordinate by a number of steps exits the board.
+    """
     dr, dc = direction.value
 
     coord_new_r = coord_old.r + dr * step
@@ -156,6 +183,10 @@ def is_off_board_after (coord_old: Coord, step: int, direction: Direction, stack
 
 # Whether the specific Blue and Red stack pair is in the same direction, if it is get the direction
 def get_same_direction (coord_red: Coord, coord_blue: Coord) -> Direction | None:
+    """
+    Get the straight-line direction from Red to Blue when aligned.
+    Return None when they are not on the same row/column.
+    """
     if coord_red == coord_blue:
         return None
 
@@ -169,6 +200,10 @@ def get_same_direction (coord_red: Coord, coord_blue: Coord) -> Direction | None
 
 # Count how many stacks (no matter Blue or Red) are in between of the given pair
 def count_stacks_between (coord_a: Coord, coord_b: Coord, occupied: set[Coord]) -> int:
+    """
+    Count occupied cells strictly between two aligned coordinates.
+    Returns 0 when coordinates are not aligned.
+    """
     # Same row
     if coord_a.r == coord_b.r:
         row = coord_a.r
@@ -198,6 +233,9 @@ def count_stacks_between (coord_a: Coord, coord_b: Coord, occupied: set[Coord]) 
 # Whether the cascade action of the specific Red stack is successful (it can eliminate the corresponding Blue stack we are looking at) or otherwise meaningful (in at least one of the three cases)
 # in terms of the given pair
 def successful_cascade (board: dict[Coord, CellState], coord_red: Coord, state_red: CellState, coord_blue: Coord, direction: Direction) -> float:
+    """
+    Check whether a cascade can push the target Blue stack off board.
+    """
     is_successful = False
 
     # Whether the height of the red stack we are looking at is >= 2

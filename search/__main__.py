@@ -3,7 +3,7 @@
 
 from sys import stdin
 from .core import Coord, CellState, PlayerColor, Action, MoveAction, EatAction, CascadeAction
-from .program import search, search_bfs
+from .program import search
 import time
 
 # WARNING: Please *do not* modify any of the code in this file, as this could
